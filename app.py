@@ -3,6 +3,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import os
 import json
 import logging
+import asyncio
 from scraper import scrape_data
 
 app = Flask(__name__)
@@ -31,7 +32,7 @@ def get_usage_data():
 @app.route('/scrape', methods=['POST'])
 def trigger_scrape():
     try:
-        scrape_data()
+        asyncio.run(scrape_data())
         return jsonify({"message": "Scraping triggered successfully."}), 200
     except Exception as e:
         logger.error(f"Error during scraping: {e}")
@@ -39,9 +40,13 @@ def trigger_scrape():
 
 # Schedule scraping every hour
 scheduler = BackgroundScheduler()
-scheduler.add_job(scrape_data, 'interval', hours=1)
+scheduler.add_job(lambda: asyncio.run(scrape_data()), 'interval', hours=1)
 scheduler.start()
 
 # Start the Flask app
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.getenv('WEB_PORT', 8080)), debug=os.getenv('DEBUG_MODE', 'false').lower() == 'true'))
+    app.run(
+        host='0.0.0.0',
+        port=int(os.getenv('WEB_PORT', 8080)),
+        debug=os.getenv('DEBUG_MODE', 'false').lower() == 'true'
+    )
