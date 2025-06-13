@@ -1,0 +1,13 @@
+# Ignore environment variable file with secrets
+.env
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Docker
+*.log
+*.pid
+*.sock
+data/
