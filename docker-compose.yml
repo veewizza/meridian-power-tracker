@@ -8,15 +8,18 @@ services:
     container_name: meridian-power-tracker
     restart: unless-stopped
     ports:
-      - "${WEB_PORT}:8081"
+      - "${WEB_PORT:-8080}:8080"
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env
     environment:
       - TZ=Pacific/Auckland
+      - DISPLAY=:99
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/status"]
-      interval: 1m
+      interval: 2m
       timeout: 10s
       retries: 3
       start_period: 30s
+    # Add shared memory size for browser stability
+    shm_size: 2gb
