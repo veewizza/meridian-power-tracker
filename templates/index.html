@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meridian Energy Power Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            padding-top: 20px;
+            background-color: #f8f9fa;
+        }
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .card-header {
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
+        }
+        .status-indicator {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .status-running {
+            background-color: #28a745;
+        }
+        .status-error {
+            background-color: #dc3545;
+        }
+        .btn-refresh {
+            margin-left: 10px;
+        }
+        .data-table {
+            font-size: 0.9rem;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="mb-4">
+            <div class="row">
+                <div class="col">
+                    <h1 class="display-4">Meridian Energy Power Tracker</h1>
+                    <p class="lead">Monitor your power usage data from Meridian Energy</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Status Card -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>System Status</span>
+                <button id="refreshStatus" class="btn btn-sm btn-light">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="statusLoading" class="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p>
+                            <strong>Status:</strong> 
+                            <span id="statusIndicator" class="status-indicator status-running"></span>
+                            <span id="statusText">Running</span>
+                        </p>
+                        <p><strong>Last Update:</strong> <span id="lastUpdate">Never</span></p>
+                        <p><strong>Next Scheduled Run:</strong> <span id="nextRun">Unknown</span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Data Files:</strong> <span id="dataFilesCount">0</span></p>
+                        <p><strong>Scrape Interval:</strong> <span id="scrapeInterval">60</span> minutes</p>
+                        <p><strong>Home Assistant Integration:</strong> <span id="hassIntegration">Disabled</span></p>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button id="manualScrape" class="btn btn-primary">
+                        <i class="bi bi-cloud-download"></i> Run Manual Scrape
+                    </button>
+                    <div id="scrapeResult" class="alert mt-3 hidden"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Latest Data Card -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Latest Power Usage Data</span>
+                <button id="refreshData" class="btn btn-sm btn-light">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="dataLoading" class="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <div id="noDataMessage" class="alert alert-info hidden">
+                    No data available. Run a manual scrape to fetch data.
+                </div>
+                <div id="dataContent" class="hidden">
+                    <ul class="nav nav-tabs" id="dataTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="chart-tab" data-bs-toggle="tab" data-bs-target="#chart" type="button" role="tab" aria-controls="chart" aria-selected="true">Chart</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="table-tab" data-bs-toggle="tab" data-bs-target="#table" type="button" role="tab" aria-controls="table" aria-selected="false">Table</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw" type="button" role="tab" aria-controls="raw" aria-selected="false">Raw JSON</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3" id="dataTabsContent">
+                        <div class="tab-pane fade show active" id="chart" role="tabpanel" aria-labelledby="chart-tab">
+                            <div class="chart-container">
+                                <canvas id="powerUsageChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="table" role="tabpanel" aria-labelledby="table-tab">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>Usage (kWh)</th>
+                                            <th>Cost</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dataTableBody">
+                                        <!-- Data will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="raw" role="tabpanel" aria-labelledby="raw-tab">
+                            <pre id="rawJson" class="bg-light p-3" style="max-height: 400px; overflow-y: auto;"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Data Card -->
+        <div class="card">
+            <div class="card-header">Historical Data</div>
+            <div class="card-body">
+                <div id="historyLoading" class="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="historyDays" class="form-label">Days to display:</label>
+                        <select id="historyDays" class="form-select">
+                            <option value="1">1 day</option>
+                            <option value="3">3 days</option>
+                            <option value="7" selected>7 days</option>
+                            <option value="14">14 days</option>
+                            <option value="30">30 days</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button id="loadHistory" class="btn btn-primary">
+                            <i class="bi bi-graph-up"></i> Load Historical Data
+                        </button>
+                    </div>
+                </div>
+                <div id="noHistoryMessage" class="alert alert-info hidden">
+                    No historical data available for the selected period.
+                </div>
+                <div id="historyContent" class="hidden">
+                    <div class="chart-container">
+                        <canvas id="historyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Files Card -->
+        <div class="card">
+            <div class="card-header">Data Files</div>
+            <div class="card-body">
+                <div id="filesLoading" class="loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <div id="noFilesMessage" class="alert alert-info hidden">
+                    No data files available.
+                </div>
+                <div id="filesContent" class="hidden">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover data-table">
+                            <thead>
+                                <tr>
+                                    <th>Filename</th>
+                                    <th>Date</th>
+                                    <th>Size</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="filesTableBody">
+                                <!-- Files will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-light py-3 mt-5">
+        <div class="container text-center">
+            <p class="text-muted mb-0">Meridian Energy Power Tracker &copy; 2025</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let powerUsageChart = null;
+        let historyChart = null;
+        let latestData = null;
+
+        // Helper functions
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        }
+
+        function showLoading(elementId) {
+            document.getElementById(elementId).classList.remove('hidden');
+        }
+
+        function hideLoading(elementId) {
+            document.getElementById(elementId).classList.add('hidden');
+        }
+
+        function showElement(elementId) {
+            document.getElementById(elementId).classList.remove('hidden');
+        }
+
+        function hideElement(elementId) {
+            document.getElementById(elementId).classList.add('hidden');
+        }
+
+        function showAlert(elementId, message, type = 'success') {
+            const alert = document.getElementById(elementId);
+            alert.textContent = message;
+            alert.className = `alert mt-3 alert-${type}`;
+            showElement(elementId);
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                hideElement(elementId);
+            }, 5000);
+        }
+
+        // Load system status
+        async function loadStatus() {
+            showLoading('statusLoading');
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                document.getElementById('statusText').textContent = data.status;
+                document.getElementById('lastUpdate').textContent = data.last_update ? formatDate(data.last_update) : 'Never';
+                document.getElementById('nextRun').textContent = data.next_scheduled_run ? formatDate(data.next_scheduled_run) : 'Unknown';
+                document.getElementById('dataFilesCount').textContent = data.data_files_count;
+                document.getElementById('scrapeInterval').textContent = data.scrape_interval_minutes;
+                document.getElementById('hassIntegration').textContent = data.home_assistant_integration ? 'Enabled' : 'Disabled';
+                
+                // Update status indicator
+                const statusIndicator = document.getElementById('statusIndicator');
+                if (data.status === 'running') {
+                    statusIndicator.className = 'status-indicator status-running';
+                } else {
+                    statusIndicator.className = 'status-indicator status-error';
+                }
+            } catch (error) {
+                console.error('Error loading status:', error);
+                document.getElementById('statusText').textContent = 'Error';
+                document.getElementById('statusIndicator').className = 'status-indicator status-error';
+            } finally {
+                hideLoading('statusLoading');
+            }
+        }
+
+        // Load latest data
+        async function loadLatestData() {
+            showLoading('dataLoading');
+            hideElement('dataContent');
+            hideElement('noDataMessage');
+            
+            try {
+                const response = await fetch('/api/data/latest');
+                
+                if (!response.ok) {
+                    throw new Error('No data available');
+                }
+                
+                latestData = await response.json();
+                
+                // Display raw JSON
+                document.getElementById('rawJson').textContent = JSON.stringify(latestData, null, 2);
+                
+                // Process and display data in table and chart
+                processLatestData(latestData);
+                
+                showElement('dataContent');
+            } catch (error) {
+                console.error('Error loading latest data:', error);
+                showElement('noDataMessage');
+            } finally {
+                hideLoading('dataLoading');
+            }
+        }
+
+        // Process and display latest data
+        function processLatestData(data) {
+            // This function needs to be customized based on the actual data structure
+            // from Meridian Energy's API
+            
+            // For now, we'll use a placeholder implementation
+            const tableBody = document.getElementById('dataTableBody');
+            tableBody.innerHTML = '';
+            
+            // Sample data processing - adjust based on actual data structure
+            if (data.readings) {
+                const chartLabels = [];
+                const chartData = [];
+                
+                data.readings.forEach(reading => {
+                    // Add to table
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${formatDate(reading.timestamp)}</td>
+                        <td>${reading.usage.toFixed(2)}</td>
+                        <td>$${reading.cost ? reading.cost.toFixed(2) : 'N/A'}</td>
+                    `;
+                    tableBody.appendChild(row);
+                    
+                    // Add to chart data
+                    chartLabels.push(new Date(reading.timestamp).toLocaleTimeString());
+                    chartData.push(reading.usage);
+                });
+                
+                // Create or update chart
+                createOrUpdateChart('powerUsageChart', chartLabels, chartData, 'Power Usage (kWh)');
+            } else {
+                // If data structure is different, display a message
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td colspan="3" class="text-center">Data structure not recognized. See Raw JSON tab.</td>
+                `;
+                tableBody.appendChild(row);
+            }
+        }
+
+        // Create or update chart
+        function createOrUpdateChart(chartId, labels, data, label) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (chartId === 'powerUsageChart' && powerUsageChart) {
+                powerUsageChart.destroy();
+            } else if (chartId === 'historyChart' && historyChart) {
+                historyChart.destroy();
+            }
+            
+            // Create new chart
+            const newChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                        borderColor: 'rgba(0, 123, 255, 1)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(0, 123, 255, 1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'kWh'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Store chart reference
+            if (chartId === 'powerUsageChart') {
+                powerUsageChart = newChart;
+            } else if (chartId === 'historyChart') {
+                historyChart = newChart;
+            }
+        }
+
+        // Run manual scrape
+        async function runManualScrape() {
+            const button = document.getElementById('manualScrape');
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Scraping...';
+            
+            try {
+                const response = await fetch('/api/scrape/manual');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showAlert('scrapeResult', 'Successfully scraped data. Refreshing...', 'success');
+                    // Refresh data and status after successful scrape
+                    setTimeout(() => {
+                        loadLatestData();
+                        loadStatus();
+                    }, 1000);
+                } else {
+                    showAlert('scrapeResult', `Error: ${data.message}`, 'danger');
+                }
+            } catch (error) {
+                console.error('Error during manual scrape:', error);
+                showAlert('scrapeResult', 'Error: Could not connect to server', 'danger');
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<i class="bi bi-cloud-download"></i> Run Manual Scrape';
+            }
+        }
+
+        // Load historical data
+        async function loadHistoricalData() {
+            const days = document.getElementById('historyDays').value;
+            showLoading('historyLoading');
+            hideElement('historyContent');
+            hideElement('noHistoryMessage');
+            
+            try {
+                const response = await fetch(`/api/data/history?days=${days}`);
+                
+                if (!response.ok) {
+                    throw new Error('No historical data available');
+                }
+                
+                const data = await response.json();
+                
+                if (data.length === 0) {
+                    showElement('noHistoryMessage');
+                    return;
+                }
+                
+                // Process and display historical data
+                processHistoricalData(data);
+                
+                showElement('historyContent');
+            } catch (error) {
+                console.error('Error loading historical data:', error);
+                showElement('noHistoryMessage');
+            } finally {
+                hideLoading('historyLoading');
+            }
+        }
+
+        // Process and display historical data
+        function processHistoricalData(data) {
+            // This function needs to be customized based on the actual data structure
+            
+            // For now, we'll use a placeholder implementation
+            const chartLabels = [];
+            const chartData = [];
+            
+            // Sort data by timestamp
+            data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            
+            data.forEach(item => {
+                // Format date for chart label
+                const date = new Date(item.timestamp);
+                const label = `${date.getDate()}/${date.getMonth() + 1} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+                
+                chartLabels.push(label);
+                chartData.push(item.usage);
+            });
+            
+            // Create or update chart
+            createOrUpdateChart('historyChart', chartLabels, chartData, 'Historical Power Usage (kWh)');
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load initial data
+            loadStatus();
+            loadLatestData();
+            
+            // Set up event listeners
+            document.getElementById('refreshStatus').addEventListener('click', loadStatus);
+            document.getElementById('refreshData').addEventListener('click', loadLatestData);
+            document.getElementById('manualScrape').addEventListener('click', runManualScrape);
+            document.getElementById('loadHistory').addEventListener('click', loadHistoricalData);
+            
+            // Set up auto-refresh
+            setInterval(loadStatus, 60000); // Refresh status every minute
+        });
+    </script>
+</body>
+</html>
