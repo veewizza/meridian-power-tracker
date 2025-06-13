@@ -1,4 +1,4 @@
-# Ignore environment variable file with secrets
+# Ignore environment variables with secrets
 .env
 
 # Byte-compiled / optimized / DLL files
@@ -6,8 +6,57 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Docker
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# VSCode settings
+.vscode/
+
+# Docker files
 *.log
 *.pid
 *.sock
+
+# Docker Compose override files
+docker-compose.override.yml
+
+# Docker volumes / data directory (your scraped data)
 data/
+
+# Mac system files
+.DS_Store
+
+# Linux system files
+*~
+
+# Local files
+*.local
+
+# Editor swap files
+*.swp
+*.swo
+
+# Logs
+*.log
+
